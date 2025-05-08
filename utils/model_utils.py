@@ -1,28 +1,37 @@
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision.models import resnet50, ResNet50_Weights
+import os
+import gdown
 
-class_names = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
+# Define model download URL and local path
+MODEL_URL = "https://drive.google.com/uc?id=1-P56CSh_T7V0urBiswars92Cs2hSpuHd"
+MODEL_PATH = os.path.join("app", "resnet50_dementia.pth")
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225])
-])
+CLASS_NAMES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
 
-def load_model(model_path):
-    model = models.resnet50()
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, len(class_names))
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+def download_model_if_needed():
+    if not os.path.exists(MODEL_PATH):
+        os.makedirs("app", exist_ok=True)
+        print("📥 Downloading model...")
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+        print("✅ Model downloaded.")
+
+def load_model():
+    download_model_if_needed()
+    weights = ResNet50_Weights.DEFAULT
+    model = resnet50(weights=None)
+    for param in model.parameters():
+        param.requires_grad = False
+    model.fc = nn.Linear(model.fc.in_features, len(CLASS_NAMES))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
     model.eval()
     return model
 
 def predict(image, model):
-    image = transform(image).unsqueeze(0)
+    transform = ResNet50_Weights.DEFAULT.transforms()
+    img_t = transform(image).unsqueeze(0)
     with torch.no_grad():
-        output = model(image)
-        _, pred = torch.max(output, 1)
-        return class_names[pred.item()]
-
+        outputs = model(img_t)
+        _, pred = torch.max(outputs, 1)
+    return CLASS_NAMES[pred.item()]
